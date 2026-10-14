@@ -1,0 +1,9 @@
+baseURL = 'https://JimWoodring.github.io/'
+languageCode = 'es-es'
+title = 'Mis Reseñas de Cine'
+theme = 'PaperMod'
+
+[params]
+  description = "Blog de reseñas de cine sincronizado con Letterboxd"
+  defaultTheme = "auto"
+  showToc = true
