@@ -31,6 +31,7 @@ jobs:
           import re
           import feedparser
           import requests
+          from datetime import datetime
           from google import genai
 
           api_key = os.environ.get("GEMINI_API_KEY")
@@ -40,25 +41,23 @@ jobs:
           rss_url = f"https://letterboxd.com/{user}/rss/"
           feed = feedparser.parse(rss_url)
 
-          os.makedirs("posts", exist_ok=True)
+          os.makedirs("content/posts", exist_ok=True)
 
           for entry in feed.entries:
               title = entry.title
               summary_html = entry.get("summary", "")
               
-              # Extraer texto plano para comprobar si la última palabra es "BLOG"
               clean_text = re.sub(r'<[^>]+>', '', summary_html).strip()
               words = clean_text.split()
 
               if not words or words[-1].upper() != "BLOG":
-                  continue # Ignora si no finaliza con la palabra BLOG
+                  continue
 
-              # Extraer la imagen del cartel
               image_match = re.search(r'src="(https://[^"]+\.jpg)"', summary_html)
               image_url = image_match.group(1) if image_match else ""
 
               slug = re.sub(r'[^a-zA-Z0-9]', '-', title).lower().strip('-')
-              filepath = f"posts/{slug}.md"
+              filepath = f"content/posts/{slug}.md"
 
               if os.path.exists(filepath):
                   continue
@@ -83,12 +82,11 @@ jobs:
                   contents=prompt
               )
 
-             from datetime import datetime
-            now = datetime.now().strftime("%Y-%m-%dT%H:%M:%S+00:00")
+              now = datetime.now().strftime("%Y-%m-%dT%H:%M:%S+00:00")
 
-            with open(filepath, "w", encoding="utf-8") as f:
-                f.write(f"---\ntitle: \"{title}\"\ndate: {now}\ndraft: false\n---\n\n")
-                f.write(response.text)
+              with open(filepath, "w", encoding="utf-8") as f:
+                  f.write(f'---\ntitle: "{title}"\ndate: {now}\ndraft: false\n---\n\n')
+                  f.write(response.text)
 
           EOF
 
@@ -96,5 +94,5 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git add posts/
+          git add content/
           git diff --quiet && git diff --staged --quiet || (git commit -m "Añadir nueva reseña desde Letterboxd" && git push)
