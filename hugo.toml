@@ -4,6 +4,17 @@ title = 'Mis Reseñas de Cine'
 theme = 'PaperMod'
 
 [params]
-  description = "Blog de reseñas de cine sincronizado con Letterboxd"
+  description = "Bitácora de reseñas de cine sincronizada con Letterboxd"
   defaultTheme = "auto"
   showToc = true
+  mainSections = ["posts"]
+
+[params.homeInfoParams]
+  Title = "Bienvenido a mi bitácora de cine 🎬"
+  Content = "Reseñas e impresiones sobre películas, sincronizadas automáticamente."
+
+[menu]
+  [[menu.main]]
+    name = "Reseñas"
+    url = "/posts/"
+    weight = 10
