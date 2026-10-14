@@ -1,0 +1,97 @@
+name: Publicar Reseñas de Letterboxd
+
+on:
+  schedule:
+    - cron: '0 * * * *' # Se ejecuta automáticamente cada hora
+  workflow_dispatch: # Permite ejecutarlo manualmente cuando quieras
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Descargar repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.x'
+
+      - name: Instalar dependencias
+        run: |
+          pip install feedparser requests google-genai
+
+      - name: Procesar RSS y generar entradas con IA
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          LETTERBOXD_USER: 'diegooomp'
+        run: |
+          python - << 'EOF'
+          import os
+          import re
+          import feedparser
+          import requests
+          from google import genai
+
+          api_key = os.environ.get("GEMINI_API_KEY")
+          user = os.environ.get("LETTERBOXD_USER")
+          client = genai.Client(api_key=api_key)
+
+          rss_url = f"https://letterboxd.com/{user}/rss/"
+          feed = feedparser.parse(rss_url)
+
+          os.makedirs("posts", exist_ok=True)
+
+          for entry in feed.entries:
+              title = entry.title
+              summary_html = entry.get("summary", "")
+              
+              # Extraer texto plano para comprobar si la última palabra es "BLOG"
+              clean_text = re.sub(r'<[^>]+>', '', summary_html).strip()
+              words = clean_text.split()
+
+              if not words or words[-1].upper() != "BLOG":
+                  continue # Ignora si no finaliza con la palabra BLOG
+
+              # Extraer la imagen del cartel
+              image_match = re.search(r'src="(https://[^"]+\.jpg)"', summary_html)
+              image_url = image_match.group(1) if image_match else ""
+
+              slug = re.sub(r'[^a-zA-Z0-9]', '-', title).lower().strip('-')
+              filepath = f"posts/{slug}.md"
+
+              if os.path.exists(filepath):
+                  continue
+
+              print(f"Procesando nueva reseña con etiqueta BLOG: {title}")
+
+              prompt = f"""
+              Toma la siguiente reseña/información de una película obtenida de Letterboxd:
+              Título: {title}
+              Contenido original: {summary_html}
+              Imagen del cartel: {image_url}
+
+              Instrucciones:
+              1. Limpia el texto eliminando etiquetas HTML y borra la palabra clave "BLOG" si aparece al final.
+              2. Divide el texto en párrafos bien estructurados.
+              3. Inserta la imagen del cartel ({image_url}) formateada en Markdown entre el primer y el segundo párrafo: ![Poster]({image_url})
+              4. Devuelve el resultado en formato Markdown listo para publicar en un blog.
+              """
+
+              response = client.models.generate_content(
+                  model="gemini-2.5-flash",
+                  contents=prompt
+              )
+
+              with open(filepath, "w", encoding="utf-8") as f:
+                  f.write(f"# {title}\n\n")
+                  f.write(response.text)
+
+          EOF
+
+      - name: Guardar cambios en el repositorio
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add posts/
+          git diff --quiet && git diff --staged --quiet || (git commit -m "Añadir nueva reseña desde Letterboxd" && git push)
