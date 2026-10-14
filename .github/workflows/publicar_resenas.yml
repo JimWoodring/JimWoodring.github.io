@@ -2,8 +2,8 @@ name: Publicar Reseñas de Letterboxd
 
 on:
   schedule:
-    - cron: '0 * * * *' # Se ejecuta automáticamente cada hora
-  workflow_dispatch: # Permite ejecutarlo manualmente cuando quieras
+    - cron: '0 * * * *'
+  workflow_dispatch:
 
 jobs:
   build-and-publish:
@@ -24,13 +24,12 @@ jobs:
       - name: Procesar RSS y generar entradas con IA
         env:
           GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          LETTERBOXD_USER: 'diegooomp'
+          LETTERBOXD_USER: 'DiegoooMP'
         run: |
           python - << 'EOF'
           import os
           import re
           import feedparser
-          import requests
           from datetime import datetime
           from google import genai
 
@@ -39,30 +38,38 @@ jobs:
           client = genai.Client(api_key=api_key)
 
           rss_url = f"https://letterboxd.com/{user}/rss/"
+          print(f"Consultando RSS de: {rss_url}")
           feed = feedparser.parse(rss_url)
 
           os.makedirs("content/posts", exist_ok=True)
+
+          if not feed.entries:
+              print("No se encontraron entradas en el canal RSS.")
 
           for entry in feed.entries:
               title = entry.title
               summary_html = entry.get("summary", "")
               
               clean_text = re.sub(r'<[^>]+>', '', summary_html).strip()
-              words = clean_text.split()
+              print(f"\nEvaluando entrada: '{title}'")
 
-              if not words or words[-1].upper() != "BLOG":
+              # Buscar la palabra 'blog' independientemente de mayúsculas/minúsculas o puntuación
+              if not re.search(r'\bblog\b', clean_text, re.IGNORECASE):
+                  print("  -> Omitida: No contiene la palabra 'BLOG'.")
                   continue
 
-              image_match = re.search(r'src="(https://[^"]+\.jpg)"', summary_html)
+              # Extraer imagen cubriendo extensiones comunes
+              image_match = re.search(r'src="(https://[^"]+\.(?:jpg|jpeg|png))"', summary_html)
               image_url = image_match.group(1) if image_match else ""
 
               slug = re.sub(r'[^a-zA-Z0-9]', '-', title).lower().strip('-')
               filepath = f"content/posts/{slug}.md"
 
               if os.path.exists(filepath):
+                  print(f"  -> Omitida: La entrada {filepath} ya existe.")
                   continue
 
-              print(f"Procesando nueva reseña con etiqueta BLOG: {title}")
+              print(f"  -> Generando entrada para: {title}")
 
               prompt = f"""
               Toma la siguiente reseña/información de una película obtenida de Letterboxd:
@@ -71,22 +78,26 @@ jobs:
               Imagen del cartel: {image_url}
 
               Instrucciones:
-              1. Limpia el texto eliminando etiquetas HTML y borra la palabra clave "BLOG" si aparece al final.
+              1. Limpia el texto eliminando etiquetas HTML y borra la palabra clave "BLOG" (y signos de puntuación pegados a ella) si aparece.
               2. Divide el texto en párrafos bien estructurados.
-              3. Inserta la imagen del cartel ({image_url}) formateada en Markdown entre el primer y el segundo párrafo: ![Poster]({image_url})
+              3. Si hay imagen ({image_url}), insértala formateada en Markdown entre el primer y el segundo párrafo: ![Poster]({image_url})
               4. Devuelve el resultado en formato Markdown listo para publicar en un blog.
               """
 
-              response = client.models.generate_content(
-                  model="gemini-2.5-flash",
-                  contents=prompt
-              )
+              try:
+                  response = client.models.generate_content(
+                      model="gemini-2.5-flash",
+                      contents=prompt
+                  )
+                  
+                  now = datetime.now().strftime("%Y-%m-%dT%H:%M:%S+00:00")
 
-              now = datetime.now().strftime("%Y-%m-%dT%H:%M:%S+00:00")
-
-              with open(filepath, "w", encoding="utf-8") as f:
-                  f.write(f'---\ntitle: "{title}"\ndate: {now}\ndraft: false\n---\n\n')
-                  f.write(response.text)
+                  with open(filepath, "w", encoding="utf-8") as f:
+                      f.write(f'---\ntitle: "{title}"\ndate: {now}\ndraft: false\n---\n\n')
+                      f.write(response.text)
+                  print("  -> ¡Entrada guardada con éxito!")
+              except Exception as e:
+                  print(f"  -> Error al generar contenido con IA: {e}")
 
           EOF
 
