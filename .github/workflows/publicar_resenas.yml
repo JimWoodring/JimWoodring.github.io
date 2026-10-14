@@ -83,9 +83,12 @@ jobs:
                   contents=prompt
               )
 
-              with open(filepath, "w", encoding="utf-8") as f:
-                  f.write(f"# {title}\n\n")
-                  f.write(response.text)
+             from datetime import datetime
+            now = datetime.now().strftime("%Y-%m-%dT%H:%M:%S+00:00")
+
+            with open(filepath, "w", encoding="utf-8") as f:
+                f.write(f"---\ntitle: \"{title}\"\ndate: {now}\ndraft: false\n---\n\n")
+                f.write(response.text)
 
           EOF
 
